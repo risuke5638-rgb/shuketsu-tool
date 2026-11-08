@@ -6,4 +6,68 @@ function edit(id,k,v){people.find(p=>p.id===id)[k]=v;save();choices();calc()}fun
 function utc(){let d=new Date();$("h").value=d.getUTCHours();$("m").value=d.getUTCMinutes();$("s").value=String(Math.floor(d.getUTCSeconds()/10)*10).padStart(2,"0");calc()}function step(id,d,max){$(id).value=(Number($(id).value)+d+max)%max;calc()}function fmt(t){let n=((t%86400)+86400)%86400;return [Math.floor(n/3600),Math.floor(n%3600/60),n%60].map(x=>String(x).padStart(2,"0")).join(":")}
 function calc(){let h=Number($("h").value),m=Number($("m").value),s=Number($("s").value),chosen=people.filter(p=>selected.includes(p.id));if(chosen.length!==mode||!chosen.every(p=>p.name.trim()&&/^\d+$/.test(p.march)&&+p.march>0)||h<0||h>23||m<0||m>59){$("result").textContent="参加者と時刻を確認してください";copyValue="";return}let base=h*3600+m*60+s,raw=chosen.map((p,i)=>({p,r:(i===0?1:0)-Number(p.march)})),min=Math.min(...raw.map(x=>x.r)),starts=raw.map(x=>({name:x.p.name,rank:people.indexOf(x.p),offset:x.r-min,start:base+x.r-min,arrival:base+x.r-min+300+Number(x.p.march)})).sort((a,b)=>a.start-b.start||a.rank-b.rank),arrivals=[...starts].sort((a,b)=>a.arrival-b.arrival||b.rank-a.rank),last=Math.max(...arrivals.map(x=>x.arrival));$("result").innerHTML="<h4>集結開始</h4>"+starts.map(x=>`<div class="line"><span>${esc(x.name)} <small>＋${x.offset}秒</small></span><b>${fmt(x.start)}</b></div>`).join("")+"<h4>王城への着弾</h4>"+arrivals.map(x=>`<div class="line"><span>${esc(x.name)}</span><b>${fmt(x.arrival)}</b></div>`).join("")+"<p class='small' style='text-align:center'>最終着弾予定（UTC）</p><div class='big'>"+fmt(last)+"</div>";copyValue=`【王城${mode}連集結／UTC】\n【集結開始】\n${starts.map((x,i)=>`${i+1} ${x.name}：${fmt(x.start)}${x.offset?"（＋"+x.offset+"秒）":"（基準）"}`).join("\n")}\n【着弾予定】${fmt(last)}`}
 async function cp(t){try{await navigator.clipboard.writeText(t);return true}catch(e){let a=document.createElement("textarea");a.value=t;document.body.append(a);a.select();let ok=document.execCommand("copy");a.remove();return ok}}async function backup(){$("saved").textContent=await cp(people.map(p=>p.name+"\t"+p.march).join("\n"))?"登録情報をコピーしました":"コピーできませんでした"}async function copySchedule(){$("copied").textContent=copyValue&&(await cp(copyValue))?"コピーしました":"コピーできませんでした"}["h","m","s"].forEach(id=>$(id).addEventListener("change",calc));draw();
+
+const arrivalBox=document.createElement("section");
+arrivalBox.innerHTML=`
+<h3>⑤ 着弾時間予測</h3>
+<p class="small">集結開始時間（UTC）</p>
+<button onclick="arrivalNow()" style="width:100%">🕒 現在のUTC時刻を入力</button>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px">
+${[["時","ah",23],["分","am",59],["秒","as",59]].map(([label,id,max])=>`
+<div>
+<label>${label}</label>
+<input id="${id}" type="number" min="0" max="${max}" value="00" oninput="arrivalCalc()" style="width:100%">
+<div class="btns">
+<button onclick="arrivalStep('${id}',-1,${max+1})">▼</button>
+<button onclick="arrivalStep('${id}',1,${max+1})">▲</button>
+</div>
+</div>`).join("")}
+</div>
+<p>集結主名（空欄可）</p>
+<input id="aname" placeholder="名前" oninput="arrivalCalc()">
+<p>行軍時間予測（秒）</p>
+<input id="amarch" type="number" min="0" step="1" placeholder="例：40" oninput="arrivalCalc()">
+<p class="small" style="text-align:center">着弾予定時刻（UTC）</p>
+<div class="big" id="arrivalResult">--:--:--</div>
+<button onclick="arrivalCopy()" style="width:100%">📋 着弾予定をコピー</button>
+<p class="small" id="arrivalMessage"></p>
+`;
+document.body.appendChild(arrivalBox);
+
+let arrivalText="";
+function arrivalNow(){
+const d=new Date();
+document.getElementById("ah").value=d.getUTCHours();
+document.getElementById("am").value=d.getUTCMinutes();
+document.getElementById("as").value=d.getUTCSeconds();
+arrivalCalc();
+}
+function arrivalStep(id,delta,max){
+const el=document.getElementById(id);
+el.value=((Number(el.value)||0)+delta+max)%max;
+arrivalCalc();
+}
+function arrivalCalc(){
+const get=id=>document.getElementById(id);
+const h=Number(get("ah").value);
+const m=Number(get("am").value);
+const s=Number(get("as").value);
+const march=get("amarch").value.trim();
+const valid=[["ah",h,23],["am",m,59],["as",s,59]]
+.every(([id,n,max])=>get(id).value.trim()!==""&&Number.isInteger(n)&&n>=0&&n<=max);
+if(!valid||!/^\d+$/.test(march)||!Number.isSafeInteger(Number(march))){
+get("arrivalResult").textContent="--:--:--";
+arrivalText="";
+return;
+}
+const time=fmt(h*3600+m*60+s+300+Number(march));
+get("arrivalResult").textContent=time;
+const name=get("aname").value.trim();
+arrivalText=(name?name+"が":"")+time+"着弾予定";
+}
+async function arrivalCopy(){
+document.getElementById("arrivalMessage").textContent=
+arrivalText&&await cp(arrivalText)?"コピーしました":"入力内容を確認してください";
+}
+arrivalNow();
 </script></html>
